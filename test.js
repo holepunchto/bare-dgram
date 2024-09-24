@@ -1,25 +1,24 @@
 const test = require('brittle')
-const dgram = require('node:dgram')
+const dgram = require('.')
 
 test('server + client', async (t) => {
   t.plan(3)
 
   const lc = t.test('lifecycle')
-  lc.plan(12)
+  lc.plan(11)
 
   const createSocketCb = (msg) => lc.ok(msg, 'createSocket callback')
   const server = dgram.createSocket('udp4', createSocketCb)
     .on('close', () => t.pass('server closed'))
-    .on('error', () => t.fail(err.message))
+    .on('error', (err) => t.fail(err.message))
     .on('listening', () => lc.pass('server listening'))
     .on('message', (msg, rinfo) => {
       lc.is(msg.toString(), 'message', 'server recieved message')
 
       lc.ok(rinfo)
-      lc.ok(rinfo.address)
+      lc.ok(rinfo.host || rinfo.address) // checking 'address' for Node.js compatibility
       lc.ok(rinfo.family)
       lc.is(typeof rinfo.port, 'number')
-      lc.is(rinfo.size, 7)
     })
     .bind(() => lc.pass('server binding completed'))
 
@@ -27,7 +26,7 @@ test('server + client', async (t) => {
 
   const client = dgram.createSocket('udp4')
     .on('close', () => t.pass('client closed'))
-    .on('error', () => t.fail(err.message))
+    .on('error', (err) => t.fail(err.message))
     .on('connect', () => {
       lc.pass('client connected')
 

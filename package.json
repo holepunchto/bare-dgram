@@ -21,5 +21,8 @@
   "devDependencies": {
     "brittle": "^3.7.0",
     "standard": "^17.0.0"
+  },
+  "dependencies": {
+    "udx-native": "^1.11.2"
   }
 }
