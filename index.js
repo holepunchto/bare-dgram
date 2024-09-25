@@ -3,16 +3,6 @@ const UDX = require('udx-native')
 
 const udx = new UDX()
 
-exports.createSocket = function createSocket (opts, cb) {
-  if (typeof opts === 'string') opts = {} // For Node.js compatibility
-
-  const socket = new Socket(opts)
-
-  if (cb) socket.on('message', cb)
-
-  return socket
-}
-
 const Socket = exports.Socket = class Socket extends EventEmitter {
   constructor (opts = {}) {
     super()
@@ -174,4 +164,14 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
       else throw err
     }
   }
+}
+
+exports.createSocket = function createSocket (opts, cb) {
+  if (typeof opts === 'string') opts = {} // For Node.js compatibility
+
+  const socket = new Socket(opts)
+
+  if (cb) socket.on('message', cb)
+
+  return socket
 }
