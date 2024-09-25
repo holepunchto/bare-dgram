@@ -1,27 +1,60 @@
+const EventEmitter = require('bare-events')
 const UDX = require('udx-native')
-const UDXSocket = require('udx-native/lib/socket')
 
-const _udx = new UDX()
+const udx = new UDX()
 
 exports.createSocket = function createSocket (opts, cb) {
-  if (typeof opts === 'string') opts = {} // ignore type signature ('udp4' or 'udp6')
+  if (typeof opts === 'string') opts = {} // For Node.js compatibility
 
   const socket = new Socket(opts)
+
   if (cb) socket.on('message', cb)
 
   return socket
 }
 
-const Socket = exports.Socket = class Socket extends UDXSocket {
-  constructor (opts) {
-    super(_udx, opts)
-    this._connectedWith = { port: 0, address: '::' }
+const Socket = exports.Socket = class Socket extends EventEmitter {
+  constructor (opts = {}) {
+    super()
+
+    this._remotePort = -1
+    this._remoteAddress = null
+    this._remoteFamily = 0
+
+    this._socket = udx.createSocket(opts)
+    this._socket
+      .on('error', (err) => this.emit('error', err))
+      .on('close', () => this.emit('close'))
+      .on('listening', () => this.emit('listening'))
+      .on('message', (message, address) => this.emit('message', message, address))
+  }
+
+  address () {
+    const address = this._socket.address()
+
+    if (address === null) return null
+
+    return {
+      address: address.host,
+      family: `IPv${address.family}`,
+      port: address.port
+    }
+  }
+
+  remoteAddress () {
+    if (this._remotePort === -1) return null
+
+    return {
+      address: this._remoteAddress,
+      family: `IPv${this._remoteFamily}`,
+      port: this._remotePort
+    }
   }
 
   bind (port, address, cb) {
     if (typeof port === 'function') {
       cb = port
-      port = null // don't set default values, udx will figure those out
+      port = 0
       address = null
     } else if (typeof address === 'function') {
       cb = address
@@ -30,60 +63,111 @@ const Socket = exports.Socket = class Socket extends UDXSocket {
 
     if (typeof port === 'object' && port !== null) {
       const opts = port || {}
+
       port = opts.port || null
       address = opts.address || null
     }
 
     if (cb) this.once('listening', cb)
 
-    super.bind(port, address)
+    this._socket.bind(port, address)
 
     return this
   }
 
   connect (port, address, cb) {
-    if (typeof port === 'function') {
-      cb = port
-      port = 0
-      address = '127.0.0.1'
-    } else if (typeof address === 'function') {
+    if (typeof address === 'function') {
       cb = address
-      address = '127.0.0.1'
+      address = null
     }
 
-    // there's no connection operation here, actually
-    this._connectedWith = { port, address }
+    this._remotePort = port
+    this._remoteAddress = address
+    this._remoteFamily = UDX.isIP(address)
 
-    this.emit('connect')
-    if (cb) cb()
+    if (cb) this.once('connect', cb)
+
+    queueMicrotask(() => this.emit('connect'))
   }
 
-  send (msg, offset, length, port, address, cb) {
-    // use info from the last simulated connection
-    const defaultPort = this._connectedWith.port
-    const defaultAddress = this._connectedWith.address
+  async close (cb) {
+    try {
+      await this._socket.close()
+
+      if (cb) cb(null)
+    } catch (err) {
+      if (cb) cb(err)
+      else throw err
+    }
+  }
+
+  async send (buffer, offset, length, port, address, cb) {
+    if (typeof buffer === 'string') buffer = Buffer.from(buffer)
 
     if (typeof offset === 'function') {
-      port = defaultPort
-      address = defaultAddress
       cb = offset
+      offset = 0
+      length = buffer.byteLength
+      port = 0
+      address = null
     } else if (typeof length === 'function') {
-      port = defaultPort
-      address = defaultAddress
       cb = length
+      port = offset
+      address = null
+      offset = 0
+      length = buffer.byteLength
     } else if (typeof port === 'function') {
-      port = defaultPort
-      address = defaultAddress
       cb = port
+
+      if (typeof length === 'string') {
+        port = offset
+        address = length
+        offset = 0
+        length = buffer.byteLength
+      } else {
+        port = 0
+        address = null
+      }
     } else if (typeof address === 'function') {
-      address = defaultAddress
       cb = address
+
+      if (typeof port === 'string') {
+        address = port
+        port = 0
+      } else {
+        address = null
+      }
     }
 
-    if (!Buffer.isBuffer(msg)) msg = Buffer.from(msg)
+    if (typeof offset === 'string') {
+      address = offset
+      port = 0
+      offset = 0
+      length = buffer.byteLength
+    }
 
-    super.send(msg, port, address).then(() => {
-      if (cb) cb()
-    })
+    if (typeof length === 'string') {
+      address = length
+      port = offset
+      offset = 0
+      length = buffer.byteLength
+    } else if (typeof length !== 'number') {
+      port = offset
+      address = null
+      offset = 0
+      length = buffer.byteLength
+    }
+
+    if (!port) port = this._remotePort
+    if (!address) address = this._remoteAddress
+
+    try {
+      await this._socket.send(buffer, port, address)
+
+      if (cb) cb(null)
+    } catch (err) {
+      if (cb) cb(err)
+      else throw err
+    }
   }
 }
