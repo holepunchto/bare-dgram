@@ -1,8 +1,6 @@
 # bare-dgram
 
-Native UDP for JavaScript.
-
-Based on [udx](https://github.com/holepunchto/udx-native).
+Native UDP for JavaScript. Based on [UDX](https://github.com/holepunchto/udx-native).
 
 ```
 npm i bare-dgram
