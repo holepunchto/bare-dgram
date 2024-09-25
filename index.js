@@ -25,7 +25,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     this._socket
       .on('error', (err) => this.emit('error', err))
       .on('close', () => this.emit('close'))
-      .on('listening', () => this.emit('listening'))
+      .on('listening', () => queueMicrotask(() => this.emit('listening')) /* Deferred for Node.js compatibility */)
       .on('message', (message, address) => this.emit('message', message, address))
   }
 
