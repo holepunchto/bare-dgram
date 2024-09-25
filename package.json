@@ -1,6 +1,6 @@
 {
   "name": "bare-dgram",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Native UDP for JavaScript",
   "exports": {
     ".": "./index.js",
