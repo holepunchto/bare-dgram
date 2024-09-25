@@ -161,6 +161,10 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     if (!port) port = this._remotePort
     if (!address) address = this._remoteAddress
 
+    if (offset !== 0 || length !== buffer.byteLength) {
+      buffer = buffer.subarray(offset, offset + length)
+    }
+
     try {
       await this._socket.send(buffer, port, address)
 
