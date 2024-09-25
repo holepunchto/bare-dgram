@@ -16,7 +16,11 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
       .on('error', (err) => this.emit('error', err))
       .on('close', () => this.emit('close'))
       .on('listening', () => queueMicrotask(() => this.emit('listening')) /* Deferred for Node.js compatibility */)
-      .on('message', (message, address) => this.emit('message', message, address))
+      .on('message', (message, address) => this.emit('message', message, {
+        address: address.host,
+        family: `IPv${address.family}`,
+        port: address.port
+      }))
   }
 
   address () {
