@@ -19,7 +19,8 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
       .on('message', (message, address) => this.emit('message', message, {
         address: address.host,
         family: `IPv${address.family}`,
-        port: address.port
+        port: address.port,
+        size: message.length
       }))
   }
 

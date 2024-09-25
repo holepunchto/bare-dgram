@@ -5,7 +5,7 @@ test('server + client', async (t) => {
   t.plan(3)
 
   const lc = t.test('lifecycle')
-  lc.plan(11)
+  lc.plan(12)
 
   const createSocketCb = (msg) => lc.ok(msg, 'createSocket callback')
   const server = dgram.createSocket('udp4', createSocketCb)
@@ -16,9 +16,10 @@ test('server + client', async (t) => {
       lc.is(msg.toString(), 'message', 'server recieved message')
 
       lc.ok(rinfo)
-      lc.ok(rinfo.host || rinfo.address) // checking 'address' for Node.js compatibility
-      lc.ok(rinfo.family)
+      lc.is(rinfo.address, '127.0.0.1')
+      lc.is(rinfo.family, 'IPv4')
       lc.is(typeof rinfo.port, 'number')
+      lc.is(rinfo.size, 7)
     })
     .bind(() => lc.pass('server binding completed'))
 
