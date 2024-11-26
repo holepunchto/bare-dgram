@@ -3,8 +3,8 @@ const UDX = require('udx-native')
 
 const udx = new UDX()
 
-const Socket = exports.Socket = class Socket extends EventEmitter {
-  constructor (opts = {}) {
+exports.Socket = class Socket extends EventEmitter {
+  constructor(opts = {}) {
     super()
 
     this._remotePort = -1
@@ -15,16 +15,18 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     this._socket
       .on('error', (err) => this.emit('error', err))
       .on('close', () => this.emit('close'))
-      .on('listening', () => queueMicrotask(() => this.emit('listening')) /* Deferred for Node.js compatibility */)
-      .on('message', (message, address) => this.emit('message', message, {
-        address: address.host,
-        family: `IPv${address.family}`,
-        port: address.port,
-        size: message.length
-      }))
+      .on('listening', () => queueMicrotask(() => this.emit('listening')))
+      .on('message', (message, address) =>
+        this.emit('message', message, {
+          address: address.host,
+          family: `IPv${address.family}`,
+          port: address.port,
+          size: message.length
+        })
+      )
   }
 
-  address () {
+  address() {
     const address = this._socket.address()
 
     if (address === null) return null
@@ -36,7 +38,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     }
   }
 
-  remoteAddress () {
+  remoteAddress() {
     if (this._remotePort === -1) return null
 
     return {
@@ -46,7 +48,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     }
   }
 
-  bind (port, address, cb) {
+  bind(port, address, cb) {
     if (typeof port === 'function') {
       cb = port
       port = 0
@@ -70,7 +72,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     return this
   }
 
-  connect (port, address, cb) {
+  connect(port, address, cb) {
     if (typeof address === 'function') {
       cb = address
       address = null
@@ -85,7 +87,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     queueMicrotask(() => this.emit('connect'))
   }
 
-  async close (cb) {
+  async close(cb) {
     try {
       await this._socket.close()
 
@@ -96,7 +98,7 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
     }
   }
 
-  async send (buffer, offset, length, port, address, cb) {
+  async send(buffer, offset, length, port, address, cb) {
     if (typeof buffer === 'string') buffer = Buffer.from(buffer)
 
     if (typeof offset === 'function') {
@@ -171,10 +173,10 @@ const Socket = exports.Socket = class Socket extends EventEmitter {
   }
 }
 
-exports.createSocket = function createSocket (opts, cb) {
+exports.createSocket = function createSocket(opts, cb) {
   if (typeof opts === 'string') opts = {} // For Node.js compatibility
 
-  const socket = new Socket(opts)
+  const socket = new exports.Socket(opts)
 
   if (cb) socket.on('message', cb)
 

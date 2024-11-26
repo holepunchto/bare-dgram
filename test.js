@@ -8,7 +8,8 @@ test('server + client', async (t) => {
   lc.plan(12)
 
   const createSocketCb = (msg) => lc.ok(msg, 'createSocket callback')
-  const server = dgram.createSocket('udp4', createSocketCb)
+  const server = dgram
+    .createSocket('udp4', createSocketCb)
     .on('close', () => t.pass('server closed'))
     .on('error', (err) => t.fail(err.message))
     .on('listening', () => lc.pass('server listening'))
@@ -25,7 +26,8 @@ test('server + client', async (t) => {
 
   await waitForServer(server)
 
-  const client = dgram.createSocket('udp4')
+  const client = dgram
+    .createSocket('udp4')
     .on('close', () => t.pass('client closed'))
     .on('error', (err) => t.fail(err.message))
     .on('connect', () => {
@@ -42,16 +44,12 @@ test('server + client', async (t) => {
   server.close()
 })
 
-function waitForServer (server) {
+function waitForServer(server) {
   return new Promise((resolve, reject) => {
-    server
-      .on('listening', done)
-      .on('error', done)
+    server.on('listening', done).on('error', done)
 
-    function done (error) {
-      server
-        .off('listening', done)
-        .off('error', done)
+    function done(error) {
+      server.off('listening', done).off('error', done)
 
       error ? reject(error) : resolve()
     }
