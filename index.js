@@ -88,14 +88,15 @@ exports.Socket = class Socket extends EventEmitter {
   }
 
   async close(cb) {
+    let err = null
     try {
       await this._socket.close()
-
-      if (cb) cb(null)
-    } catch (err) {
-      if (cb) cb(err)
-      else throw err
+    } catch (e) {
+      if (cb) err = e
+      else throw e
     }
+
+    if (cb) cb(err)
   }
 
   async send(buffer, offset, length, port, address, cb) {
@@ -162,14 +163,15 @@ exports.Socket = class Socket extends EventEmitter {
       buffer = buffer.subarray(offset, offset + length)
     }
 
+    let err = null
     try {
       await this._socket.send(buffer, port, address)
-
-      if (cb) cb(null)
-    } catch (err) {
-      if (cb) cb(err)
-      else throw err
+    } catch (e) {
+      if (cb) err = e
+      else throw e
     }
+
+    if (cb) cb(err)
   }
 }
 
