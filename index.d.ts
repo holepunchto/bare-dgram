@@ -7,15 +7,15 @@ export class Socket extends EventEmitter {
 
   remoteAddress(): { address: string; family: string; port: number } | null
 
-  bind(port: number, address: string, cb?: Function): this
-  bind(opts: { port?: number; address?: string }, cb?: Function): this
-  bind(port: number, cb?: Function): this
-  bind(cb?: Function): this
+  bind(port: number, address: string, cb?: () => void): this
+  bind(opts: { port?: number; address?: string }, cb?: () => void): this
+  bind(port: number, cb?: () => void): this
+  bind(cb?: () => void): this
 
-  connect(port: number, address: string, cb?: Function): void
-  connect(port: number, cb?: Function): void
+  connect(port: number, address: string, cb?: () => void): void
+  connect(port: number, cb?: () => void): void
 
-  close(cb?: Function): Promise<void>
+  close(cb?: (err: Error) => void): Promise<void>
 
   send(
     msg: unknown,
@@ -23,7 +23,7 @@ export class Socket extends EventEmitter {
     length: number,
     port?: number,
     address?: string,
-    cb?: Function
+    cb?: (err: Error) => void
   ): Promise<void>
 
   send(
@@ -31,7 +31,7 @@ export class Socket extends EventEmitter {
     offset: number,
     length: number,
     port: number,
-    cb: Function
+    cb: (err: Error) => void
   ): Promise<void>
 
   send(
@@ -39,33 +39,33 @@ export class Socket extends EventEmitter {
     offset: number,
     length: number,
     address: string,
-    cb: Function
+    cb: (err: Error) => void
   ): Promise<void>
 
   send(
     msg: unknown,
     offset: number,
     address: string,
-    cb: Function
+    cb: (err: Error) => void
   ): Promise<void>
 
   send(
     msg: unknown,
     offset: number,
     length: number,
-    cb: Function
+    cb: (err: Error) => void
   ): Promise<void>
 
   send(msg: unknown, port: number, address: string): Promise<void>
 
-  send(msg: unknown, port: number, cb?: Function): Promise<void>
+  send(msg: unknown, port: number, cb?: (err: Error) => void): Promise<void>
 
   send(msg: unknown, address: string): Promise<void>
 
-  send(msg: unknown, cb: Function): Promise<void>
+  send(msg: unknown, cb: (err: Error) => void): Promise<void>
 }
 
 export function createSocket(
   opts?: { ipv6Only?: boolean; reuseAddress?: boolean } | string,
-  cb?: Function
+  cb?: (message: unknown) => void
 ): Socket
