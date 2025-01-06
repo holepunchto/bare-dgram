@@ -8,7 +8,13 @@ export interface rinfo {
   size: number
 }
 
-export class Socket<T extends EventMap> extends EventEmitter<T> {
+export class Socket extends EventEmitter<{
+  close: []
+  connect: []
+  error: [Error]
+  listening: []
+  message: [string | Buffer, rinfo]
+}> {
   constructor(opts?: { ipv6Only?: boolean; reuseAddress?: boolean })
 
   address(): { address: string; family: string; port: number } | null
@@ -77,7 +83,7 @@ export class Socket<T extends EventMap> extends EventEmitter<T> {
   send(msg: string | Buffer, cb: (err: Error) => void): Promise<void>
 }
 
-export function createSocket<T>(
+export function createSocket(
   opts?: { ipv6Only?: boolean; reuseAddress?: boolean } | string,
   cb?: (message: Buffer, address: rinfo) => void
-): Socket<T>
+): Socket
