@@ -31,8 +31,12 @@
     "udx-native": "^1.11.2"
   },
   "devDependencies": {
+    "bare-buffer": "^2.7.1",
     "brittle": "^3.7.0",
     "prettier": "^3.4.0",
     "prettier-config-standard": "^7.0.0"
+  },
+  "peerDependencies": {
+    "bare-buffer": "^2.7.1"
   }
 }

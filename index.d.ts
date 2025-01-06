@@ -1,6 +1,14 @@
 import EventEmitter from 'bare-events'
+import Buffer from 'bare-buffer'
 
-export class Socket extends EventEmitter {
+export interface rinfo {
+  address: string
+  family: 'IPv4' | 'IPv6'
+  port: number
+  size: number
+}
+
+export class Socket<T extends EventMap> extends EventEmitter<T> {
   constructor(opts?: { ipv6Only?: boolean; reuseAddress?: boolean })
 
   address(): { address: string; family: string; port: number } | null
@@ -18,7 +26,7 @@ export class Socket extends EventEmitter {
   close(cb?: (err: Error) => void): Promise<void>
 
   send(
-    msg: unknown,
+    msg: string | Buffer,
     offset: number,
     length: number,
     port?: number,
@@ -27,7 +35,7 @@ export class Socket extends EventEmitter {
   ): Promise<void>
 
   send(
-    msg: unknown,
+    msg: string | Buffer,
     offset: number,
     length: number,
     port: number,
@@ -35,7 +43,7 @@ export class Socket extends EventEmitter {
   ): Promise<void>
 
   send(
-    msg: unknown,
+    msg: string | Buffer,
     offset: number,
     length: number,
     address: string,
@@ -43,29 +51,33 @@ export class Socket extends EventEmitter {
   ): Promise<void>
 
   send(
-    msg: unknown,
+    msg: string | Buffer,
     offset: number,
     address: string,
     cb: (err: Error) => void
   ): Promise<void>
 
   send(
-    msg: unknown,
+    msg: string | Buffer,
     offset: number,
     length: number,
     cb: (err: Error) => void
   ): Promise<void>
 
-  send(msg: unknown, port: number, address: string): Promise<void>
+  send(msg: string | Buffer, port: number, address: string): Promise<void>
 
-  send(msg: unknown, port: number, cb?: (err: Error) => void): Promise<void>
+  send(
+    msg: string | Buffer,
+    port: number,
+    cb?: (err: Error) => void
+  ): Promise<void>
 
-  send(msg: unknown, address: string): Promise<void>
+  send(msg: string | Buffer, address: string): Promise<void>
 
-  send(msg: unknown, cb: (err: Error) => void): Promise<void>
+  send(msg: string | Buffer, cb: (err: Error) => void): Promise<void>
 }
 
-export function createSocket(
+export function createSocket<T>(
   opts?: { ipv6Only?: boolean; reuseAddress?: boolean } | string,
-  cb?: (message: unknown) => void
-): Socket
+  cb?: (message: Buffer, address: rinfo) => void
+): Socket<T>
