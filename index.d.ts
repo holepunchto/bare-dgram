@@ -1,7 +1,7 @@
 import EventEmitter from 'bare-events'
 import Buffer from 'bare-buffer'
 
-export interface rinfo {
+export interface RemoteInfo {
   address: string
   family: 'IPv4' | 'IPv6'
   port: number
@@ -11,9 +11,9 @@ export interface rinfo {
 export class Socket extends EventEmitter<{
   close: []
   connect: []
-  error: [Error]
+  error: [err: Error]
   listening: []
-  message: [string | Buffer, rinfo]
+  message: [message: string | Buffer, remote: RemoteInfo]
 }> {
   constructor(opts?: { ipv6Only?: boolean; reuseAddress?: boolean })
 
@@ -85,5 +85,5 @@ export class Socket extends EventEmitter<{
 
 export function createSocket(
   opts?: { ipv6Only?: boolean; reuseAddress?: boolean } | string,
-  cb?: (message: Buffer, address: rinfo) => void
+  cb?: (message: Buffer, remote: RemoteInfo) => void
 ): Socket
