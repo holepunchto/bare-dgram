@@ -38,5 +38,10 @@
   },
   "peerDependencies": {
     "bare-buffer": "*"
+  },
+  "peerDependenciesMeta": {
+    "bare-buffer": {
+      "optional": true
+    }
   }
 }
