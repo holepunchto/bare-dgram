@@ -72,11 +72,7 @@ export class Socket extends EventEmitter<{
 
   send(msg: string | Buffer, port: number, address: string): Promise<void>
 
-  send(
-    msg: string | Buffer,
-    port: number,
-    cb?: (err: Error) => void
-  ): Promise<void>
+  send(msg: string | Buffer, port: number, cb?: (err: Error) => void): Promise<void>
 
   send(msg: string | Buffer, address: string): Promise<void>
 
