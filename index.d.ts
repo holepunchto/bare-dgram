@@ -1,85 +1,198 @@
-import EventEmitter from 'bare-events'
+import EventEmitter, { EventMap } from 'bare-events'
 import Buffer from 'bare-buffer'
+import { IPFamily, LookupOptions } from 'bare-dns'
+import type { IPCAcceptable } from 'bare-pipe'
+import DgramError from './lib/errors'
+import constants from './lib/constants'
 
-export interface RemoteInfo {
+interface DNSLookup {
+  (
+    hostname: string,
+    opts: LookupOptions,
+    cb: (err: Error | null, address: string | null, family: IPFamily | 0) => void
+  ): void
+}
+
+type DgramSocketType = 'udp4' | 'udp6'
+
+interface DgramSocketAddress {
   address: string
-  family: 'IPv4' | 'IPv6'
+  family: `IPv${IPFamily}`
+  port: number
+}
+
+interface DgramRemoteInfo {
+  address: string
+  family: `IPv${IPFamily}`
   port: number
   size: number
 }
 
-export class Socket extends EventEmitter<{
+interface DgramSocketEvents extends EventMap {
   close: []
   connect: []
   error: [err: Error]
   listening: []
-  message: [message: string | Buffer, remote: RemoteInfo]
-}> {
-  constructor(opts?: { ipv6Only?: boolean; reuseAddress?: boolean })
+  message: [message: Buffer, remote: DgramRemoteInfo]
+}
 
-  address(): { address: string; family: string; port: number } | null
+interface DgramSocketOptions {
+  ipv6Only?: boolean
+  lookup?: DNSLookup
+  readBufferSize?: number
+  recvBufferSize?: number
+  reuseAddr?: boolean
+  reusePort?: boolean
+  sendBufferSize?: number
+  type?: DgramSocketType | null
+}
 
-  remoteAddress(): { address: string; family: string; port: number } | null
+interface DgramSocketBindOptions {
+  address?: string
+  fd?: number
+  port?: number
+}
 
-  bind(port: number, address: string, cb?: () => void): this
-  bind(opts: { port?: number; address?: string }, cb?: () => void): this
-  bind(port: number, cb?: () => void): this
-  bind(cb?: () => void): this
+interface DgramSocketConnectOptions {
+  address?: string
+  port?: number
+}
 
-  connect(port: number, address: string, cb?: () => void): void
-  connect(port: number, cb?: () => void): void
+interface DgramSocket<M extends DgramSocketEvents = DgramSocketEvents>
+  extends EventEmitter<M>, IPCAcceptable {
+  readonly type: DgramSocketType | null
+  readonly bound: boolean
+  readonly connected: boolean
+  readonly closing: boolean
+  readonly closed: boolean
 
-  close(cb?: (err: Error) => void): Promise<void>
+  address(): DgramSocketAddress | null
+
+  remoteAddress(): DgramSocketAddress | null
+
+  bind(port?: number, address?: string, onlistening?: () => void): this
+  bind(port: number, onlistening: () => void): this
+  bind(opts: DgramSocketBindOptions, onlistening?: () => void): this
+  bind(onlistening: () => void): this
+
+  connect(port: number, address?: string, onconnect?: () => void): this
+  connect(port: number, onconnect: () => void): this
+  connect(opts: DgramSocketConnectOptions, onconnect?: () => void): this
+
+  disconnect(): this
 
   send(
-    msg: string | Buffer,
+    msg: DgramMessage,
     offset: number,
     length: number,
     port?: number,
     address?: string,
-    cb?: (err: Error) => void
-  ): Promise<void>
-
+    cb?: (err: Error | null, bytes: number) => void
+  ): void
   send(
-    msg: string | Buffer,
+    msg: DgramMessage,
     offset: number,
     length: number,
     port: number,
-    cb: (err: Error) => void
-  ): Promise<void>
-
+    cb: (err: Error | null, bytes: number) => void
+  ): void
   send(
-    msg: string | Buffer,
+    msg: DgramMessage,
     offset: number,
     length: number,
-    address: string,
-    cb: (err: Error) => void
-  ): Promise<void>
-
+    cb?: (err: Error | null, bytes: number) => void
+  ): void
   send(
-    msg: string | Buffer,
-    offset: number,
-    address: string,
-    cb: (err: Error) => void
-  ): Promise<void>
+    msg: DgramMessage,
+    port: number,
+    address?: string,
+    cb?: (err: Error | null, bytes: number) => void
+  ): void
+  send(msg: DgramMessage, port: number, cb: (err: Error | null, bytes: number) => void): void
+  send(msg: DgramMessage, cb?: (err: Error | null, bytes: number) => void): void
 
-  send(
-    msg: string | Buffer,
-    offset: number,
-    length: number,
-    cb: (err: Error) => void
-  ): Promise<void>
+  setBroadcast(flag: boolean): void
 
-  send(msg: string | Buffer, port: number, address: string): Promise<void>
+  setTTL(ttl: number): number
 
-  send(msg: string | Buffer, port: number, cb?: (err: Error) => void): Promise<void>
+  setMulticastTTL(ttl: number): number
 
-  send(msg: string | Buffer, address: string): Promise<void>
+  setMulticastLoopback(flag: boolean): boolean
 
-  send(msg: string | Buffer, cb: (err: Error) => void): Promise<void>
+  setMulticastInterface(iface: string): void
+
+  addMembership(group: string, iface?: string | null): void
+
+  dropMembership(group: string, iface?: string | null): void
+
+  addSourceSpecificMembership(source: string, group: string, iface?: string | null): void
+
+  dropSourceSpecificMembership(source: string, group: string, iface?: string | null): void
+
+  getSendBufferSize(): number
+
+  setSendBufferSize(size: number): void
+
+  getRecvBufferSize(): number
+
+  setRecvBufferSize(size: number): void
+
+  getSendQueueSize(): number
+
+  getSendQueueCount(): number
+
+  pause(): this
+
+  resume(): this
+
+  close(onclose?: () => void): this
+
+  ref(): this
+  unref(): this
 }
 
-export function createSocket(
-  opts?: { ipv6Only?: boolean; reuseAddress?: boolean } | string,
-  cb?: (message: Buffer, remote: RemoteInfo) => void
-): Socket
+declare class DgramSocket<M extends DgramSocketEvents = DgramSocketEvents> extends EventEmitter<M> {
+  constructor(
+    opts?: DgramSocketOptions | DgramSocketType | null,
+    onmessage?: (message: Buffer, remote: DgramRemoteInfo) => void
+  )
+  constructor(onmessage: (message: Buffer, remote: DgramRemoteInfo) => void)
+}
+
+type DgramMessage = string | Buffer | ArrayBufferView | (string | Buffer | ArrayBufferView)[]
+
+declare function createSocket(
+  opts?: DgramSocketOptions | DgramSocketType | null,
+  onmessage?: (message: Buffer, remote: DgramRemoteInfo) => void
+): DgramSocket
+
+declare function createSocket(
+  onmessage: (message: Buffer, remote: DgramRemoteInfo) => void
+): DgramSocket
+
+declare function isIP(host: string): IPFamily | 0
+
+declare function isIPv4(host: string): boolean
+
+declare function isIPv6(host: string): boolean
+
+export {
+  type DgramSocket,
+  DgramSocket as Socket,
+  createSocket,
+  constants,
+  type DgramError,
+  DgramError as errors,
+  type IPFamily,
+  isIP,
+  isIPv4,
+  isIPv6,
+  type DgramMessage,
+  type DgramRemoteInfo,
+  type DgramSocketAddress,
+  type DgramSocketBindOptions,
+  type DgramSocketConnectOptions,
+  type DgramSocketEvents,
+  type DgramSocketOptions,
+  type DgramSocketType
+}
