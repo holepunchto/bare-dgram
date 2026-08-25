@@ -1,6 +1,11 @@
 const test = require('brittle')
 const dgram = require('.')
 
+// Windows hands a UDP send to the kernel immediately and reports its real
+// status once the loop picks up the completion, so a send is never cancelled by
+// a close there.
+const isWindows = Bare.platform === 'win32'
+
 test('server + client', async (t) => {
   t.plan(3)
 
@@ -1134,14 +1139,12 @@ test('socket, send after close', (t) => {
 
 test('socket, send cancelled by close', async (t) => {
   // Large enough that the sends are still queued when the socket closes, so the
-  // cancellation path is exercised. A platform that completes a UDP send
-  // synchronously leaves nothing to cancel, so the control below asserts
-  // against what was actually queued rather than assuming a failure.
+  // cancellation path is exercised. The exact failure differs by platform, so
+  // the control below asserts that the sends really do fail rather than
+  // assuming a particular code.
   const payload = Buffer.alloc(60000)
 
   const reported = []
-
-  let queued = 0
 
   const control = dgram.createSocket()
 
@@ -1154,17 +1157,16 @@ test('socket, send cancelled by close', async (t) => {
       control.send(payload, 1234, '127.0.0.1', (err) => reported.push(err && err.code))
     }
 
-    queued = control.getSendQueueCount()
-
     control.close(resolve)
   })
 
-  const failed = reported.some((code) => code)
+  t.is(reported.length, 4, 'the close settled every send')
 
-  if (queued > 0) {
-    t.ok(failed, 'a queued send failed, so the case below is not vacuous: ' + reported.join())
-  } else {
-    t.absent(failed, 'nothing was queued, so nothing failed: ' + reported.join())
+  if (!isWindows) {
+    t.ok(
+      reported.some((code) => code),
+      'the sends really are failing, so the case below is not vacuous: ' + reported.join()
+    )
   }
 
   const emitted = []
@@ -1410,19 +1412,16 @@ test('socket, repeated closes give one close event and every callback', async (t
 })
 
 test('socket, close settles sends in flight', async (t) => {
-  // Large enough that some sends are still queued when close() runs, where the
-  // platform queues them at all, so the cancellation path is exercised rather
-  // than only the completed-send path. This is what pins the ordering
-  // `_onclose`'s `_sends.clear()` relies on: libuv flushes queued send requests
-  // before the close callback.
+  // Large enough that some sends are still queued when close() runs, so the
+  // cancellation path is exercised rather than only the completed-send path.
+  // This is what pins the ordering `_onclose`'s `_sends.clear()` relies on:
+  // libuv flushes queued send requests before the close callback.
   const payload = Buffer.alloc(60000)
 
   const socket = dgram.createSocket()
 
   const order = []
   const settled = []
-
-  let queued = 0
 
   socket.on('close', () => order.push('close'))
 
@@ -1438,8 +1437,6 @@ test('socket, close settles sends in flight', async (t) => {
       })
     }
 
-    queued = socket.getSendQueueCount()
-
     socket.close(() => {
       order.push('callback')
 
@@ -1447,14 +1444,13 @@ test('socket, close settles sends in flight', async (t) => {
     })
   })
 
-  const failed = settled.some((code) => code !== null)
-
   t.is(settled.length, 4, 'every send callback fired despite _sends.clear()')
 
-  if (queued > 0) {
-    t.ok(failed, 'a queued send failed, so this is not vacuous: ' + settled.join())
-  } else {
-    t.absent(failed, 'nothing was queued, so nothing failed: ' + settled.join())
+  if (!isWindows) {
+    t.ok(
+      settled.some((code) => code !== null),
+      'at least one send really was cancelled, so this is not vacuous: ' + settled.join()
+    )
   }
 
   t.ok(order.indexOf('send') < order.indexOf('close'), 'sends settle before close is emitted')
