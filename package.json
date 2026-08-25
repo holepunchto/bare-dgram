@@ -1,20 +1,36 @@
 {
   "name": "bare-dgram",
   "version": "1.0.1",
-  "description": "Native UDP for JavaScript",
+  "description": "Native UDP sockets for JavaScript",
   "exports": {
+    "./package": "./package.json",
     ".": {
       "types": "./index.d.ts",
       "default": "./index.js"
     },
-    "./package": "./package.json"
+    "./constants": {
+      "types": "./lib/constants.d.ts",
+      "default": "./lib/constants.js"
+    },
+    "./errors": {
+      "types": "./lib/errors.d.ts",
+      "default": "./lib/errors.js"
+    }
   },
   "files": [
     "index.js",
-    "./index.d.ts"
+    "index.d.ts",
+    "binding.c",
+    "binding.js",
+    "CMakeLists.txt",
+    "lib",
+    "prebuilds"
   ],
+  "addon": true,
   "scripts": {
-    "test": "prettier . --check && bare test.js"
+    "format": "prettier --write . && lunte --fix",
+    "lint": "prettier --check . && lunte",
+    "test": "brittle-bare --coverage test.js"
   },
   "repository": {
     "type": "git",
@@ -26,21 +42,31 @@
     "url": "https://github.com/holepunchto/bare-dgram/issues"
   },
   "homepage": "https://github.com/holepunchto/bare-dgram#readme",
+  "engines": {
+    "bare": ">=1.16.0"
+  },
   "dependencies": {
-    "bare-events": "^2.5.0",
-    "udx-native": "^1.11.2"
+    "bare-dns": "^2.0.4",
+    "bare-events": "^2.5.4"
   },
   "devDependencies": {
-    "bare-buffer": "^2.7.1",
-    "brittle": "^3.7.0",
-    "prettier": "^3.4.0",
+    "bare-buffer": "^3.0.0",
+    "bare-pipe": "^4.2.3",
+    "brittle": "^3.19.1",
+    "cmake-bare": "^1.1.6",
+    "lunte": "^1.8.0",
+    "prettier": "^3.4.1",
     "prettier-config-holepunch": "^2.0.0"
   },
   "peerDependencies": {
-    "bare-buffer": "*"
+    "bare-buffer": "*",
+    "bare-pipe": "*"
   },
   "peerDependenciesMeta": {
     "bare-buffer": {
+      "optional": true
+    },
+    "bare-pipe": {
       "optional": true
     }
   }
