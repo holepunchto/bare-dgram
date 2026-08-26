@@ -137,8 +137,8 @@ exports.Socket = class DgramSocket extends EventEmitter {
     if (typeof port === 'object' && port !== null) {
       const opts = port
 
-      port = opts.port || 0
-      address = opts.address || null
+      port = defaultTo(opts.port, 0)
+      address = defaultTo(opts.address, null)
 
       if (opts.fd !== undefined) {
         validateFd(opts.fd)
@@ -146,6 +146,8 @@ exports.Socket = class DgramSocket extends EventEmitter {
         fd = opts.fd
       }
     }
+
+    if (address === '') address = null
 
     if (fd === -1) {
       validatePort(port, true)
@@ -203,9 +205,11 @@ exports.Socket = class DgramSocket extends EventEmitter {
     if (typeof port === 'object' && port !== null) {
       const opts = port
 
-      port = opts.port || 0
-      address = opts.address || null
+      port = defaultTo(opts.port, 0)
+      address = defaultTo(opts.address, null)
     }
+
+    if (address === '') address = null
 
     validatePort(port)
 
@@ -845,4 +849,8 @@ function validateInteger(value, name, min, max) {
       `${name} must be an integer between ${min} and ${max}, got ${value}`
     )
   }
+}
+
+function defaultTo(value, fallback) {
+  return value === undefined || value === null ? fallback : value
 }

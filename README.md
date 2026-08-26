@@ -109,7 +109,7 @@ Returns the address information for the peer, or `null` if the socket is not con
 
 #### `socket.bind(options[, onlistening])`
 
-Bind the socket to `port` and `address` and start receiving datagrams. If `port` is omitted or `0`, an available port is chosen automatically. If `address` is omitted, the socket binds to all interfaces. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
+Bind the socket to `port` and `address` and start receiving datagrams. If `port` is omitted or `0`, an available port is chosen automatically. If `address` is omitted or empty, the socket binds to all interfaces. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
 
 Addresses may carry a zone identifier, such as `fe80::1%en0`, and an IP address may be at most `dgram.constants.address.MAX_LENGTH` bytes long.
 
@@ -131,7 +131,7 @@ If `onlistening` is provided, it is added as a one-time listener for the `listen
 
 #### `socket.connect(options[, onconnect])`
 
-Connect the socket to a remote `port` and `address`, binding it first if it is not already bound. A connected socket sends to its peer by default and only receives datagrams from it. If `address` is omitted, the loopback address is used. Unlike `bind()`, `port` must be between `1` and `65535`.
+Connect the socket to a remote `port` and `address`, binding it first if it is not already bound. A connected socket sends to its peer by default and only receives datagrams from it. If `address` is omitted or empty, the loopback address is used. Unlike `bind()`, `port` must be between `1` and `65535`.
 
 If `onconnect` is provided, it is added as a one-time listener for the `connect` event. Returns `this`.
 

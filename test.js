@@ -145,28 +145,22 @@ test('socket, address after close', async (t) => {
 })
 
 test('socket, link local addresses keep their zone', async (t) => {
-  const iface = linkLocalInterface()
+  const bound = await bindLinkLocal()
 
-  if (iface === null) {
-    t.comment('no link local interface available')
+  if (bound === null) {
+    t.comment('no bindable link local interface available')
 
     return
   }
 
-  const host = `${iface.address}%${iface.name}`
-
-  const socket = dgram.createSocket('udp6')
-
-  socket.bind(0, host)
-
-  await waitForListening(socket)
+  const { socket, host } = bound
 
   // A link local address without its zone is ambiguous between interfaces, so
   // it has to survive the round trip through the binding.
   const { address } = socket.address()
 
   t.not(address.indexOf('%'), -1, 'the reported address carries a zone: ' + address)
-  t.is(address.split('%')[0], iface.address, 'and is otherwise unchanged')
+  t.is(address.split('%')[0], host.split('%')[0], 'and is otherwise unchanged')
 
   const peer = dgram.createSocket('udp6')
 
@@ -501,6 +495,8 @@ test('socket, invalid address', (t) => {
   const socket = dgram.createSocket()
 
   t.exception(() => socket.bind(0, 42), /INVALID_HOST/)
+  t.exception(() => socket.bind({ address: 0 }), /INVALID_HOST/)
+  t.exception(() => socket.connect({ port: 1234, address: 0 }), /INVALID_HOST/)
   t.exception(() => socket.bind({ fd: 'x' }), /INVALID_FD/)
   t.exception(() => socket.bind({ fd: -1 }), /INVALID_FD/)
   t.exception(() => socket.bind({ fd: 1.5 }), /INVALID_FD/)
@@ -517,7 +513,57 @@ test('socket, invalid port', (t) => {
   t.exception(() => socket.bind(65536), /INVALID_PORT/)
   t.exception(() => socket.bind('1234'), /INVALID_PORT/)
 
+  // A malformed port in the options is rejected rather than defaulted, and the
+  // error names the value that was passed.
+  t.exception(() => socket.bind({ port: NaN }), /got NaN/)
+  t.exception(() => socket.connect({ port: NaN }), /got NaN/)
+
   socket.close()
+})
+
+test('socket, bind with an empty address', async (t) => {
+  t.plan(2)
+
+  // An empty address means the wildcard, whichever form it arrives in.
+  const forms = [
+    ['options', (socket) => socket.bind({ address: '' })],
+    ['positional', (socket) => socket.bind(0, '')]
+  ]
+
+  for (const [label, bind] of forms) {
+    const socket = dgram.createSocket()
+
+    bind(socket)
+
+    await waitForListening(socket)
+
+    t.is(socket.address().address, '0.0.0.0', `bound to the wildcard, as ${label}`)
+
+    socket.close()
+
+    await waitForClose(socket)
+  }
+})
+
+test('socket, connect with an empty address', async (t) => {
+  t.plan(1)
+
+  const server = dgram.createSocket()
+
+  server.bind(0, '127.0.0.1')
+
+  await waitForListening(server)
+
+  const socket = dgram.createSocket()
+
+  socket.connect(server.address().port, '')
+
+  await waitForConnect(socket)
+
+  t.is(socket.remoteAddress().address, '127.0.0.1', 'connected to the loopback address')
+
+  socket.close()
+  server.close()
 })
 
 test('socket, port zero', async (t) => {
@@ -1745,13 +1791,43 @@ function waitFor(emitter, event) {
   })
 }
 
-function linkLocalInterface() {
+function linkLocalHosts() {
+  const hosts = []
+
   for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
     for (const address of addresses) {
-      if (address.family === 'IPv6' && address.address.startsWith('fe80:')) {
-        return { name, address: address.address }
-      }
+      if (address.family !== 'IPv6') continue
+      if (address.address.startsWith('fe80:') === false) continue
+      if (address.scopeid === 0) continue
+
+      // Windows scopes an address by interface index, everything else by
+      // interface name, which is also how each platform reports the zone back.
+      const zone = isWindows ? address.scopeid : name
+
+      hosts.push(`${address.address}%${zone}`)
     }
+  }
+
+  return hosts
+}
+
+// Not every interface that reports a link local address can be bound to, so try
+// each in turn rather than assuming the first one works.
+async function bindLinkLocal() {
+  for (const host of linkLocalHosts()) {
+    const socket = dgram.createSocket('udp6')
+
+    try {
+      socket.bind(0, host)
+
+      await waitForListening(socket)
+    } catch {
+      socket.close()
+
+      continue
+    }
+
+    return { socket, host }
   }
 
   return null
