@@ -307,7 +307,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
     } else if (typeof buffer === 'string') {
       list = [Buffer.from(buffer)]
     } else if (ArrayBuffer.isView(buffer)) {
-      list = [buffer]
+      list = [Buffer.coerce(buffer)]
     } else {
       throw errors.INVALID_ARGUMENT(`Buffer must be a string or a view, got ${typeof buffer}`)
     }
@@ -351,7 +351,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setBroadcast(flag) {
     flag = !!flag
 
-    this._alive()
+    this._bound()
 
     binding.setBroadcast(this._handle, flag)
   }
@@ -359,7 +359,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setTTL(ttl) {
     validateInteger(ttl, 'TTL', 0, 0xff)
 
-    this._alive()
+    this._bound()
 
     binding.setTTL(this._handle, ttl)
 
@@ -369,7 +369,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setMulticastTTL(ttl) {
     validateInteger(ttl, 'TTL', 0, 0xff)
 
-    this._alive()
+    this._bound()
 
     binding.setMulticastTTL(this._handle, ttl)
 
@@ -379,7 +379,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setMulticastLoopback(flag) {
     flag = !!flag
 
-    this._alive()
+    this._bound()
 
     binding.setMulticastLoopback(this._handle, flag)
 
@@ -389,7 +389,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setMulticastInterface(iface) {
     validateAddress(iface, 'Interface')
 
-    this._alive()
+    this._bound()
 
     binding.setMulticastInterface(this._handle, iface)
   }
@@ -411,7 +411,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   }
 
   getSendBufferSize() {
-    this._alive()
+    this._bound()
 
     return binding.sendBufferSize(this._handle, 0)
   }
@@ -419,13 +419,13 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setSendBufferSize(size) {
     validateInteger(size, 'Size', 1, 0x7fffffff)
 
-    this._alive()
+    this._bound()
 
     binding.sendBufferSize(this._handle, size)
   }
 
   getRecvBufferSize() {
-    this._alive()
+    this._bound()
 
     return binding.recvBufferSize(this._handle, 0)
   }
@@ -433,7 +433,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   setRecvBufferSize(size) {
     validateInteger(size, 'Size', 1, 0x7fffffff)
 
-    this._alive()
+    this._bound()
 
     binding.recvBufferSize(this._handle, size)
   }
@@ -530,11 +530,19 @@ exports.Socket = class DgramSocket extends EventEmitter {
     }
   }
 
+  _bound() {
+    this._alive()
+
+    if ((this._state & constants.state.BOUND) === 0) {
+      throw errors.SOCKET_NOT_BOUND('Socket is not bound')
+    }
+  }
+
   _setMembership(group, iface, join) {
     validateAddress(group, 'Group')
     if (iface !== null) validateAddress(iface, 'Interface')
 
-    this._alive()
+    this._bound()
 
     binding.setMembership(this._handle, group, iface, join)
   }
@@ -544,7 +552,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
     validateAddress(group, 'Group')
     if (iface !== null) validateAddress(iface, 'Interface')
 
-    this._alive()
+    this._bound()
 
     binding.setSourceMembership(this._handle, group, source, iface, join)
   }
@@ -611,7 +619,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   _onsenderror(err, cb) {
     if (cb) return cb(err, 0)
 
-    if (this.listenerCount('error') > 0) this.emit('error', err)
+    this.emit('error', err)
   }
 
   _onbind() {
@@ -745,7 +753,7 @@ function coerceBufferList(list) {
     if (typeof buffer === 'string') {
       result[i] = Buffer.from(buffer)
     } else if (ArrayBuffer.isView(buffer)) {
-      result[i] = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      result[i] = Buffer.coerce(buffer)
     } else {
       return null
     }

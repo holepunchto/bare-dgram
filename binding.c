@@ -101,7 +101,7 @@ bare_dgram__buffers(js_env_t *env, js_value_t *value, uv_buf_t **result, uint32_
 
   js_value_t **elements = malloc(sizeof(js_value_t *) * bufs_len);
 
-  if (bufs == NULL || elements == NULL) {
+  if ((bufs == NULL || elements == NULL) && bufs_len > 0) {
     free(bufs);
     free(elements);
 

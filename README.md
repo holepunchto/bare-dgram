@@ -143,9 +143,9 @@ Send `msg` to `port` and `address`, binding the socket first if it is not alread
 
 If the socket is connected, `port` and `address` must be omitted and the datagram is sent to the peer. Otherwise `port` must be between `1` and `65535`. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
 
-`callback` is called as `callback(err, bytes)` once the datagram has been handed off to the operating system. If no `callback` is given, send errors are emitted as `error` events, but only when the socket has an `error` listener.
+`callback` is called as `callback(err, bytes)` once the datagram has been handed off to the operating system. If no `callback` is given, send errors are emitted as `error` events.
 
-The methods that follow all read or write socket options and so require a socket that has not been closed, throwing otherwise. Those that configure the socket rather than query it also require a bound socket, as the underlying socket is created lazily.
+The methods that follow all read or write socket options. Apart from `socket.getSendQueueSize()` and `socket.getSendQueueCount()`, which are tracked by the socket itself, they reach the underlying socket, which is created lazily, and so require a bound socket that has not been closed, throwing otherwise.
 
 #### `socket.setBroadcast(flag)`
 
@@ -252,7 +252,7 @@ Emitted after the socket has been closed.
 
 #### `event: 'error'`
 
-Emitted when the socket errors, including when binding or receiving fails. The listener receives the `Error`.
+Emitted when the socket errors, including when binding or receiving fails, and when a send fails with no `callback` to report to. The listener receives the `Error`. As with any `EventEmitter`, an `error` emitted with no listener attached is unhandled and surfaces as an uncaught exception.
 
 #### `dgram.isIP(host)`
 

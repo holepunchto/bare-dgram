@@ -877,6 +877,61 @@ test('socket, send a typed array', async (t) => {
   client.send(new Uint8Array([1, 2, 3]), port, '127.0.0.1')
 })
 
+test('socket, send a multi-byte typed array', async (t) => {
+  t.plan(2)
+
+  const { server, client, port } = await pair(t)
+
+  // The view is measured in bytes, not elements, both on the wire and in the
+  // byte count handed to the callback.
+  const view = new Uint16Array([1, 2, 3, 4])
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [1, 0, 2, 0, 3, 0, 4, 0])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(view, port, '127.0.0.1', (err, bytes) => t.is(bytes, view.byteLength))
+})
+
+test('socket, send a data view', async (t) => {
+  t.plan(1)
+
+  const { server, client, port } = await pair(t)
+
+  const view = new DataView(Uint8Array.from([1, 2, 3, 4]).buffer, 1, 2)
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [2, 3])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(view, port, '127.0.0.1')
+})
+
+test('socket, send a list of multi-byte views', async (t) => {
+  t.plan(1)
+
+  const { server, client, port } = await pair(t)
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [1, 0, 2, 3])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(
+    [new Uint16Array([1]), new DataView(Uint8Array.from([2, 3]).buffer)],
+    port,
+    '127.0.0.1'
+  )
+})
+
 test('socket, send an empty message', async (t) => {
   t.plan(2)
 
@@ -1061,6 +1116,34 @@ test('socket, send error without a callback', async (t) => {
   // 'error' event is the only place it can surface. The socket is not closing,
   // which is the other half of the branch that suppresses this during teardown.
   socket.send(Buffer.alloc(70000), 1234, '127.0.0.1')
+})
+
+test('socket, send error with neither a callback nor a listener', async (t) => {
+  t.plan(1)
+
+  // A resolved address that isn't an IP address fails the send before it
+  // reaches the binding. With no callback to report to and no 'error' listener
+  // to emit to, the failure has to surface as an unhandled error rather than
+  // being dropped.
+  const lookup = (host, opts, cb) => cb(null, 'not-an-ip', 4)
+
+  const socket = dgram.createSocket({ lookup })
+
+  socket.bind(0, '127.0.0.1')
+
+  await waitForListening(socket)
+
+  await new Promise((resolve) => {
+    Bare.once('uncaughtException', (err) => {
+      t.is(err.code, 'INVALID_HOST', 'the failure was not swallowed')
+
+      socket.close()
+
+      resolve()
+    })
+
+    socket.send('x', 1234, 'host.invalid')
+  })
 })
 
 test('socket, send failing synchronously in the binding', async (t) => {
@@ -1262,6 +1345,52 @@ test('socket, buffer sizes', async (t) => {
 
   t.ok(socket.getSendBufferSize() > 0)
   t.ok(socket.getRecvBufferSize() > 0)
+
+  socket.close()
+})
+
+test('socket, options before bind', (t) => {
+  const socket = dgram.createSocket()
+
+  // The underlying socket does not exist yet, so everything that reaches it is
+  // rejected rather than failing differently per socket type.
+  t.exception(() => socket.setBroadcast(true), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setTTL(64), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastTTL(1), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastLoopback(true), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastInterface('127.0.0.1'), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.addMembership('224.0.0.114'), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.dropMembership('224.0.0.114'), /SOCKET_NOT_BOUND/)
+  t.exception(
+    () => socket.addSourceSpecificMembership('127.0.0.1', '224.0.0.114'),
+    /SOCKET_NOT_BOUND/
+  )
+  t.exception(
+    () => socket.dropSourceSpecificMembership('127.0.0.1', '224.0.0.114'),
+    /SOCKET_NOT_BOUND/
+  )
+  t.exception(() => socket.getSendBufferSize(), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setSendBufferSize(1024), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.getRecvBufferSize(), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setRecvBufferSize(1024), /SOCKET_NOT_BOUND/)
+
+  // The send queue is tracked by the handle rather than the socket, so it reads
+  // back before the socket is bound.
+  t.is(socket.getSendQueueSize(), 0)
+  t.is(socket.getSendQueueCount(), 0)
+
+  socket.close()
+})
+
+test('socket, options are validated before the socket is bound', async (t) => {
+  const socket = dgram.createSocket()
+
+  t.exception(() => socket.setTTL('64'), /INVALID_ARGUMENT/)
+  t.exception(() => socket.addMembership(42), /INVALID_HOST/)
+
+  socket.bind(0, '127.0.0.1')
+
+  await waitForListening(socket)
 
   socket.close()
 })
