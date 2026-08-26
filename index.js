@@ -595,6 +595,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
   }
 
   _resume() {
+    if (this._paused) return
     if (this._state & constants.state.READING) return
     this._state |= constants.state.READING
 
@@ -633,7 +634,7 @@ exports.Socket = class DgramSocket extends EventEmitter {
     if (this._recvBufferSize) this.setRecvBufferSize(this._recvBufferSize)
     if (this._sendBufferSize) this.setSendBufferSize(this._sendBufferSize)
 
-    if (this._paused === false) this._resume()
+    this._resume()
 
     this._flush(null)
 
@@ -645,9 +646,9 @@ exports.Socket = class DgramSocket extends EventEmitter {
   }
 
   _onbinderror(err) {
-    this._state &= ~constants.state.BINDING
-
     queueMicrotask(() => {
+      this._state &= ~constants.state.BINDING
+
       this._flush(err)
 
       if (this._state & constants.state.CLOSED) return

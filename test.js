@@ -1,4 +1,5 @@
 const test = require('brittle')
+const os = require('bare-os')
 const dgram = require('.')
 
 // Windows hands a UDP send to the kernel immediately and reports its real
@@ -141,6 +142,38 @@ test('socket, address after close', async (t) => {
   t.is(socket.address(), null)
   t.is(socket.remoteAddress(), null)
   t.absent(socket.bound)
+})
+
+test('socket, link local addresses keep their zone', async (t) => {
+  const iface = linkLocalInterface()
+
+  if (iface === null) {
+    t.comment('no link local interface available')
+
+    return
+  }
+
+  const host = `${iface.address}%${iface.name}`
+
+  const socket = dgram.createSocket('udp6')
+
+  socket.bind(0, host)
+
+  await waitForListening(socket)
+
+  // A link local address without its zone is ambiguous between interfaces, so
+  // it has to survive the round trip through the binding.
+  const { address } = socket.address()
+
+  t.not(address.indexOf('%'), -1, 'the reported address carries a zone: ' + address)
+  t.is(address.split('%')[0], iface.address, 'and is otherwise unchanged')
+
+  const peer = dgram.createSocket('udp6')
+
+  t.execution(() => peer.connect(socket.address().port, address), 'and is accepted back')
+
+  peer.close()
+  socket.close()
 })
 
 test('socket, connecting narrows the local address', async (t) => {
@@ -420,7 +453,11 @@ test('socket, bind with malformed lookup results', async (t) => {
     ['non-string address', (h, o, cb) => cb(null, 42, 4)],
     ['null result', (h, o, cb) => cb(null, null, null)],
     ['not an IP address', (h, o, cb) => cb(null, 'not-an-ip', 4)],
-    ['over-long address', (h, o, cb) => cb(null, 'e'.repeat(500), 4)]
+    ['over-long address', (h, o, cb) => cb(null, 'e'.repeat(500), 4)],
+    [
+      'over-long IP address',
+      (h, o, cb) => cb(null, 'fe80::1%' + 'e'.repeat(dgram.constants.address.MAX_LENGTH), 6)
+    ]
   ]
 
   t.plan(cases.length)
@@ -524,6 +561,35 @@ test('socket, close during a failing bind', async (t) => {
     })
   })
 
+  held.close()
+})
+
+test('socket, work queued around a failing bind fails with it', async (t) => {
+  t.plan(4)
+
+  const held = dgram.createSocket()
+
+  held.bind(0, '127.0.0.1')
+
+  await waitForListening(held)
+
+  const socket = dgram.createSocket()
+
+  socket.on('error', (err) => t.is(err.code, 'EADDRINUSE', 'the bind error is reported'))
+
+  // The bind fails before it returns, but the socket must not quietly bind
+  // itself somewhere else to carry the send. Node reports the bind failure and
+  // leaves the socket unbound, so the send has to fail with it.
+  socket.bind(held.address().port, '127.0.0.1')
+
+  socket.send('x', 9999, '127.0.0.1', (err) => t.is(err.code, 'EADDRINUSE', 'so does the send'))
+
+  await new Promise((resolve) => setTimeout(resolve, 50))
+
+  t.absent(socket.bound, 'the socket is not bound')
+  t.is(socket.address(), null, 'and has no address of its own')
+
+  socket.close()
   held.close()
 })
 
@@ -1476,6 +1542,44 @@ test('socket, pause and resume', async (t) => {
   })
 })
 
+test('socket, pause while a bind is in flight', async (t) => {
+  t.plan(2)
+
+  // The resume is queued behind the bind, so it must not undo the pause that
+  // lands before the bind completes.
+  const server = dgram.createSocket()
+
+  let paused = true
+
+  server.on('message', (msg) => {
+    if (paused) return t.fail('received while paused')
+
+    t.is(msg.toString(), 'first', 'the buffered datagram arrives on resume')
+
+    server.close()
+    client.close()
+  })
+
+  server.bind(0, 'localhost')
+  server.resume()
+  server.pause()
+
+  await waitForListening(server)
+
+  const client = dgram.createSocket()
+  const port = server.address().port
+
+  await new Promise((resolve) => client.send('first', port, '127.0.0.1', resolve))
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  t.pass('nothing was delivered while paused')
+
+  paused = false
+
+  server.resume()
+})
+
 test('socket, ref and unref', (t) => {
   const socket = dgram.createSocket()
 
@@ -1639,6 +1743,18 @@ function waitFor(emitter, event) {
       err ? reject(err) : resolve()
     }
   })
+}
+
+function linkLocalInterface() {
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    for (const address of addresses) {
+      if (address.family === 'IPv6' && address.address.startsWith('fe80:')) {
+        return { name, address: address.address }
+      }
+    }
+  }
+
+  return null
 }
 
 async function pair(t) {

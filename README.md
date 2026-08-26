@@ -99,6 +99,8 @@ Returns the address information for the local end of the socket, or `null` if th
 }
 ```
 
+A link local IPv6 address is reported with its zone identifier, such as `fe80::1%en0`, as it is ambiguous between interfaces without one. The same applies to `socket.remoteAddress()` and to the `rinfo.address` of a received datagram, so an address reported by the socket can always be passed back to it.
+
 #### `socket.remoteAddress()`
 
 Returns the address information for the peer, or `null` if the socket is not connected. The returned object has the same shape as `socket.address()`.

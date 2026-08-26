@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "bare-buffer": "^3.0.0",
+    "bare-os": "^3.9.3",
     "bare-pipe": "^4.2.3",
     "brittle": "^3.19.1",
     "cmake-bare": "^1.1.6",
