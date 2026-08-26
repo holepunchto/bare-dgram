@@ -977,15 +977,15 @@ bare_dgram_set_membership(js_env_t *env, js_callback_info_t *info) {
   bare_dgram_address_t group;
   if (bare_dgram__get_address(env, argv[1], group, sizeof(group)) < 0) return NULL;
 
-  bare_dgram_address_t iface;
-
   js_value_type_t iface_type;
   err = js_typeof(env, argv[2], &iface_type);
   assert(err == 0);
 
-  if (iface_type == js_null || iface_type == js_undefined) {
-    iface[0] = '\0';
-  } else if (bare_dgram__get_address(env, argv[2], iface, sizeof(iface)) < 0) {
+  bool has_iface = iface_type != js_null && iface_type != js_undefined;
+
+  bare_dgram_address_t iface;
+
+  if (has_iface && bare_dgram__get_address(env, argv[2], iface, sizeof(iface)) < 0) {
     return NULL;
   }
 
@@ -993,7 +993,7 @@ bare_dgram_set_membership(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_bool(env, argv[3], &join);
   assert(err == 0);
 
-  err = uv_udp_set_membership(&dgram->handle, (char *) group, iface[0] == '\0' ? NULL : (char *) iface, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
+  err = uv_udp_set_membership(&dgram->handle, (char *) group, has_iface ? (char *) iface : NULL, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
 
   if (err < 0) {
     err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
@@ -1025,15 +1025,15 @@ bare_dgram_set_source_membership(js_env_t *env, js_callback_info_t *info) {
   bare_dgram_address_t source;
   if (bare_dgram__get_address(env, argv[2], source, sizeof(source)) < 0) return NULL;
 
-  bare_dgram_address_t iface;
-
   js_value_type_t iface_type;
   err = js_typeof(env, argv[3], &iface_type);
   assert(err == 0);
 
-  if (iface_type == js_null || iface_type == js_undefined) {
-    iface[0] = '\0';
-  } else if (bare_dgram__get_address(env, argv[3], iface, sizeof(iface)) < 0) {
+  bool has_iface = iface_type != js_null && iface_type != js_undefined;
+
+  bare_dgram_address_t iface;
+
+  if (has_iface && bare_dgram__get_address(env, argv[3], iface, sizeof(iface)) < 0) {
     return NULL;
   }
 
@@ -1041,7 +1041,7 @@ bare_dgram_set_source_membership(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_bool(env, argv[4], &join);
   assert(err == 0);
 
-  err = uv_udp_set_source_membership(&dgram->handle, (char *) group, iface[0] == '\0' ? NULL : (char *) iface, (char *) source, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
+  err = uv_udp_set_source_membership(&dgram->handle, (char *) group, has_iface ? (char *) iface : NULL, (char *) source, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
 
   if (err < 0) {
     err = js_throw_error(env, uv_err_name(err), uv_strerror(err));

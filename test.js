@@ -1183,8 +1183,32 @@ test('socket, send queue', async (t) => {
 
   await waitForListening(socket)
 
-  t.is(socket.getSendQueueSize(), 0)
+  t.is(socket.getSendQueueSize(), 0, 'nothing queued to begin with')
   t.is(socket.getSendQueueCount(), 0)
+
+  const payload = Buffer.alloc(60000)
+
+  let settled = 0
+
+  for (let i = 0; i < 4; i++) {
+    socket.send(payload, 9999, '127.0.0.1', () => settled++)
+  }
+
+  // The requests are handed to libuv but not completed until the loop turns, so
+  // they are all still outstanding here.
+  t.is(socket.getSendQueueCount(), 4, 'every request is queued')
+  t.is(settled, 0, 'and none have settled yet')
+
+  if (!isWindows) {
+    // Windows reports a queued size of zero for a request the kernel took
+    // immediately, so only the count is portable.
+    t.is(socket.getSendQueueSize(), 4 * payload.byteLength, 'sized by the payloads')
+  }
+
+  while (settled < 4) await new Promise((resolve) => setTimeout(resolve, 10))
+
+  t.is(socket.getSendQueueCount(), 0, 'the queue drains')
+  t.is(socket.getSendQueueSize(), 0)
 
   socket.close()
 })
@@ -1441,6 +1465,34 @@ test('socket, multicast membership', async (t) => {
   }
 
   t.is(added, dropped, `join and leave agree (${added})`)
+
+  socket.close()
+})
+
+test('socket, an omitted interface is not an empty one', async (t) => {
+  const socket = dgram.createSocket({ reuseAddr: true })
+
+  socket.bind()
+
+  await waitForListening(socket)
+
+  // Only an omitted interface means every applicable interface. An empty string
+  // is an address like any other, and not a valid one, which is how Node treats
+  // it too. The empty address accepted by bind() and connect() is the one place
+  // where empty means unspecified.
+  t.execution(() => socket.addMembership('224.0.0.118'), 'omitted')
+  t.execution(() => socket.addMembership('224.0.0.119', null), 'null')
+  t.execution(() => socket.addMembership('224.0.0.120', undefined), 'undefined')
+
+  const EINVAL = { code: 'EINVAL' }
+
+  t.exception(() => socket.addMembership('224.0.0.121', ''), EINVAL, 'empty is rejected')
+  t.exception(() => socket.dropMembership('224.0.0.121', ''), EINVAL)
+  t.exception(
+    () => socket.addSourceSpecificMembership('127.0.0.1', '232.0.0.115', ''),
+    EINVAL,
+    'and rejected for a source specific group too'
+  )
 
   socket.close()
 })

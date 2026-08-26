@@ -171,11 +171,11 @@ Set the interface used for outgoing multicast datagrams.
 
 #### `socket.addMembership(group[, iface])`
 
-Join the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted.
+Join the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted or `null`. An empty `iface` is an address rather than a default and is rejected, unlike the empty address accepted by `socket.bind()` and `socket.connect()`.
 
 #### `socket.dropMembership(group[, iface])`
 
-Leave the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted.
+Leave the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted or `null`.
 
 #### `socket.addSourceSpecificMembership(source, group[, iface])`
 
@@ -189,13 +189,13 @@ Leave the source specific multicast `group`.
 
 #### `socket.setSendBufferSize(size)`
 
-Get or set the size of the operating system send buffer in bytes.
+Get or set the size of the operating system send buffer in bytes. `size` must be at least `1`; the operating system may round it up to a minimum of its own.
 
 #### `socket.getRecvBufferSize()`
 
 #### `socket.setRecvBufferSize(size)`
 
-Get or set the size of the operating system receive buffer in bytes.
+Get or set the size of the operating system receive buffer in bytes. `size` must be at least `1`; the operating system may round it up to a minimum of its own.
 
 #### `socket.getSendQueueSize()`
 
