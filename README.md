@@ -99,6 +99,8 @@ Returns the address information for the local end of the socket, or `null` if th
 }
 ```
 
+A link local IPv6 address is reported with its zone identifier, such as `fe80::1%en0`, as it is ambiguous between interfaces without one. The same applies to `socket.remoteAddress()` and to the `rinfo.address` of a received datagram, so an address reported by the socket can always be passed back to it.
+
 #### `socket.remoteAddress()`
 
 Returns the address information for the peer, or `null` if the socket is not connected. The returned object has the same shape as `socket.address()`.
@@ -107,7 +109,7 @@ Returns the address information for the peer, or `null` if the socket is not con
 
 #### `socket.bind(options[, onlistening])`
 
-Bind the socket to `port` and `address` and start receiving datagrams. If `port` is omitted or `0`, an available port is chosen automatically. If `address` is omitted, the socket binds to all interfaces. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
+Bind the socket to `port` and `address` and start receiving datagrams. If `port` is omitted or `0`, an available port is chosen automatically. If `address` is omitted or empty, the socket binds to all interfaces. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
 
 Addresses may carry a zone identifier, such as `fe80::1%en0`, and an IP address may be at most `dgram.constants.address.MAX_LENGTH` bytes long.
 
@@ -129,7 +131,7 @@ If `onlistening` is provided, it is added as a one-time listener for the `listen
 
 #### `socket.connect(options[, onconnect])`
 
-Connect the socket to a remote `port` and `address`, binding it first if it is not already bound. A connected socket sends to its peer by default and only receives datagrams from it. If `address` is omitted, the loopback address is used. Unlike `bind()`, `port` must be between `1` and `65535`.
+Connect the socket to a remote `port` and `address`, binding it first if it is not already bound. A connected socket sends to its peer by default and only receives datagrams from it. If `address` is omitted or empty, the loopback address is used. Unlike `bind()`, `port` must be between `1` and `65535`.
 
 If `onconnect` is provided, it is added as a one-time listener for the `connect` event. Returns `this`.
 
@@ -143,9 +145,9 @@ Send `msg` to `port` and `address`, binding the socket first if it is not alread
 
 If the socket is connected, `port` and `address` must be omitted and the datagram is sent to the peer. Otherwise `port` must be between `1` and `65535`. If `address` is not an IP address, it is resolved using the socket's `lookup` function.
 
-`callback` is called as `callback(err, bytes)` once the datagram has been handed off to the operating system. If no `callback` is given, send errors are emitted as `error` events, but only when the socket has an `error` listener.
+`callback` is called as `callback(err, bytes)` once the datagram has been handed off to the operating system. If no `callback` is given, send errors are emitted as `error` events.
 
-The methods that follow all read or write socket options and so require a socket that has not been closed, throwing otherwise. Those that configure the socket rather than query it also require a bound socket, as the underlying socket is created lazily.
+The methods that follow all read or write socket options. Apart from `socket.getSendQueueSize()` and `socket.getSendQueueCount()`, which are tracked by the socket itself, they reach the underlying socket, which is created lazily, and so require a bound socket that has not been closed, throwing otherwise.
 
 #### `socket.setBroadcast(flag)`
 
@@ -169,11 +171,11 @@ Set the interface used for outgoing multicast datagrams.
 
 #### `socket.addMembership(group[, iface])`
 
-Join the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted.
+Join the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted or `null`. An empty `iface` is an address rather than a default and is rejected, unlike the empty address accepted by `socket.bind()` and `socket.connect()`.
 
 #### `socket.dropMembership(group[, iface])`
 
-Leave the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted.
+Leave the multicast `group` on `iface`, or on all applicable interfaces if `iface` is omitted or `null`.
 
 #### `socket.addSourceSpecificMembership(source, group[, iface])`
 
@@ -187,13 +189,13 @@ Leave the source specific multicast `group`.
 
 #### `socket.setSendBufferSize(size)`
 
-Get or set the size of the operating system send buffer in bytes.
+Get or set the size of the operating system send buffer in bytes. `size` must be at least `1`; the operating system may round it up to a minimum of its own.
 
 #### `socket.getRecvBufferSize()`
 
 #### `socket.setRecvBufferSize(size)`
 
-Get or set the size of the operating system receive buffer in bytes.
+Get or set the size of the operating system receive buffer in bytes. `size` must be at least `1`; the operating system may round it up to a minimum of its own.
 
 #### `socket.getSendQueueSize()`
 
@@ -252,7 +254,7 @@ Emitted after the socket has been closed.
 
 #### `event: 'error'`
 
-Emitted when the socket errors, including when binding or receiving fails. The listener receives the `Error`.
+Emitted when the socket errors, including when binding or receiving fails, and when a send fails with no `callback` to report to. The listener receives the `Error`. As with any `EventEmitter`, an `error` emitted with no listener attached is unhandled and surfaces as an uncaught exception.
 
 #### `dgram.isIP(host)`
 

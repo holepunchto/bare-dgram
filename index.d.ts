@@ -55,7 +55,7 @@ interface DgramSocketBindOptions {
 
 interface DgramSocketConnectOptions {
   address?: string
-  port?: number
+  port: number
 }
 
 interface DgramSocket<M extends DgramSocketEvents = DgramSocketEvents>

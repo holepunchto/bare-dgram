@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <utf.h>
 #include <uv.h>
 
@@ -79,6 +80,21 @@ bare_dgram__from_sockaddr(const struct sockaddr *addr, bare_dgram_address_t ip, 
     err = uv_inet_ntop(AF_INET6, &in6->sin6_addr, (char *) ip, INET6_ADDRSTRLEN);
     assert(err == 0);
 
+    // A link local address is only meaningful together with the interface it
+    // is scoped to, so append the zone identifier as `<address>%<zone>`. The
+    // address buffer is sized to hold it, and `uv_ip6_addr()` accepts it back.
+    if (IN6_IS_ADDR_LINKLOCAL(&in6->sin6_addr) && in6->sin6_scope_id != 0) {
+      size_t len = strlen((char *) ip);
+
+      size_t zone_len = sizeof(bare_dgram_address_t) - len - 1 /* '%' */;
+
+      ip[len] = '%';
+
+      if (uv_if_indextoiid(in6->sin6_scope_id, (char *) ip + len + 1, &zone_len) < 0) {
+        ip[len] = '\0';
+      }
+    }
+
     *port = ntohs(in6->sin6_port);
     *family = 6;
   } else {
@@ -101,7 +117,7 @@ bare_dgram__buffers(js_env_t *env, js_value_t *value, uv_buf_t **result, uint32_
 
   js_value_t **elements = malloc(sizeof(js_value_t *) * bufs_len);
 
-  if (bufs == NULL || elements == NULL) {
+  if ((bufs == NULL || elements == NULL) && bufs_len > 0) {
     free(bufs);
     free(elements);
 
@@ -961,15 +977,15 @@ bare_dgram_set_membership(js_env_t *env, js_callback_info_t *info) {
   bare_dgram_address_t group;
   if (bare_dgram__get_address(env, argv[1], group, sizeof(group)) < 0) return NULL;
 
-  bare_dgram_address_t iface;
-
   js_value_type_t iface_type;
   err = js_typeof(env, argv[2], &iface_type);
   assert(err == 0);
 
-  if (iface_type == js_null || iface_type == js_undefined) {
-    iface[0] = '\0';
-  } else if (bare_dgram__get_address(env, argv[2], iface, sizeof(iface)) < 0) {
+  bool has_iface = iface_type != js_null && iface_type != js_undefined;
+
+  bare_dgram_address_t iface;
+
+  if (has_iface && bare_dgram__get_address(env, argv[2], iface, sizeof(iface)) < 0) {
     return NULL;
   }
 
@@ -977,7 +993,7 @@ bare_dgram_set_membership(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_bool(env, argv[3], &join);
   assert(err == 0);
 
-  err = uv_udp_set_membership(&dgram->handle, (char *) group, iface[0] == '\0' ? NULL : (char *) iface, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
+  err = uv_udp_set_membership(&dgram->handle, (char *) group, has_iface ? (char *) iface : NULL, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
 
   if (err < 0) {
     err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
@@ -1009,15 +1025,15 @@ bare_dgram_set_source_membership(js_env_t *env, js_callback_info_t *info) {
   bare_dgram_address_t source;
   if (bare_dgram__get_address(env, argv[2], source, sizeof(source)) < 0) return NULL;
 
-  bare_dgram_address_t iface;
-
   js_value_type_t iface_type;
   err = js_typeof(env, argv[3], &iface_type);
   assert(err == 0);
 
-  if (iface_type == js_null || iface_type == js_undefined) {
-    iface[0] = '\0';
-  } else if (bare_dgram__get_address(env, argv[3], iface, sizeof(iface)) < 0) {
+  bool has_iface = iface_type != js_null && iface_type != js_undefined;
+
+  bare_dgram_address_t iface;
+
+  if (has_iface && bare_dgram__get_address(env, argv[3], iface, sizeof(iface)) < 0) {
     return NULL;
   }
 
@@ -1025,7 +1041,7 @@ bare_dgram_set_source_membership(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_bool(env, argv[4], &join);
   assert(err == 0);
 
-  err = uv_udp_set_source_membership(&dgram->handle, (char *) group, iface[0] == '\0' ? NULL : (char *) iface, (char *) source, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
+  err = uv_udp_set_source_membership(&dgram->handle, (char *) group, has_iface ? (char *) iface : NULL, (char *) source, join ? UV_JOIN_GROUP : UV_LEAVE_GROUP);
 
   if (err < 0) {
     err = js_throw_error(env, uv_err_name(err), uv_strerror(err));

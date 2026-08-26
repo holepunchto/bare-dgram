@@ -1,4 +1,5 @@
 const test = require('brittle')
+const os = require('bare-os')
 const dgram = require('.')
 
 // Windows hands a UDP send to the kernel immediately and reports its real
@@ -141,6 +142,32 @@ test('socket, address after close', async (t) => {
   t.is(socket.address(), null)
   t.is(socket.remoteAddress(), null)
   t.absent(socket.bound)
+})
+
+test('socket, link local addresses keep their zone', async (t) => {
+  const bound = await bindLinkLocal()
+
+  if (bound === null) {
+    t.comment('no bindable link local interface available')
+
+    return
+  }
+
+  const { socket, host } = bound
+
+  // A link local address without its zone is ambiguous between interfaces, so
+  // it has to survive the round trip through the binding.
+  const { address } = socket.address()
+
+  t.not(address.indexOf('%'), -1, 'the reported address carries a zone: ' + address)
+  t.is(address.split('%')[0], host.split('%')[0], 'and is otherwise unchanged')
+
+  const peer = dgram.createSocket('udp6')
+
+  t.execution(() => peer.connect(socket.address().port, address), 'and is accepted back')
+
+  peer.close()
+  socket.close()
 })
 
 test('socket, connecting narrows the local address', async (t) => {
@@ -420,7 +447,11 @@ test('socket, bind with malformed lookup results', async (t) => {
     ['non-string address', (h, o, cb) => cb(null, 42, 4)],
     ['null result', (h, o, cb) => cb(null, null, null)],
     ['not an IP address', (h, o, cb) => cb(null, 'not-an-ip', 4)],
-    ['over-long address', (h, o, cb) => cb(null, 'e'.repeat(500), 4)]
+    ['over-long address', (h, o, cb) => cb(null, 'e'.repeat(500), 4)],
+    [
+      'over-long IP address',
+      (h, o, cb) => cb(null, 'fe80::1%' + 'e'.repeat(dgram.constants.address.MAX_LENGTH), 6)
+    ]
   ]
 
   t.plan(cases.length)
@@ -464,6 +495,8 @@ test('socket, invalid address', (t) => {
   const socket = dgram.createSocket()
 
   t.exception(() => socket.bind(0, 42), /INVALID_HOST/)
+  t.exception(() => socket.bind({ address: 0 }), /INVALID_HOST/)
+  t.exception(() => socket.connect({ port: 1234, address: 0 }), /INVALID_HOST/)
   t.exception(() => socket.bind({ fd: 'x' }), /INVALID_FD/)
   t.exception(() => socket.bind({ fd: -1 }), /INVALID_FD/)
   t.exception(() => socket.bind({ fd: 1.5 }), /INVALID_FD/)
@@ -480,7 +513,57 @@ test('socket, invalid port', (t) => {
   t.exception(() => socket.bind(65536), /INVALID_PORT/)
   t.exception(() => socket.bind('1234'), /INVALID_PORT/)
 
+  // A malformed port in the options is rejected rather than defaulted, and the
+  // error names the value that was passed.
+  t.exception(() => socket.bind({ port: NaN }), /got NaN/)
+  t.exception(() => socket.connect({ port: NaN }), /got NaN/)
+
   socket.close()
+})
+
+test('socket, bind with an empty address', async (t) => {
+  t.plan(2)
+
+  // An empty address means the wildcard, whichever form it arrives in.
+  const forms = [
+    ['options', (socket) => socket.bind({ address: '' })],
+    ['positional', (socket) => socket.bind(0, '')]
+  ]
+
+  for (const [label, bind] of forms) {
+    const socket = dgram.createSocket()
+
+    bind(socket)
+
+    await waitForListening(socket)
+
+    t.is(socket.address().address, '0.0.0.0', `bound to the wildcard, as ${label}`)
+
+    socket.close()
+
+    await waitForClose(socket)
+  }
+})
+
+test('socket, connect with an empty address', async (t) => {
+  t.plan(1)
+
+  const server = dgram.createSocket()
+
+  server.bind(0, '127.0.0.1')
+
+  await waitForListening(server)
+
+  const socket = dgram.createSocket()
+
+  socket.connect(server.address().port, '')
+
+  await waitForConnect(socket)
+
+  t.is(socket.remoteAddress().address, '127.0.0.1', 'connected to the loopback address')
+
+  socket.close()
+  server.close()
 })
 
 test('socket, port zero', async (t) => {
@@ -524,6 +607,35 @@ test('socket, close during a failing bind', async (t) => {
     })
   })
 
+  held.close()
+})
+
+test('socket, work queued around a failing bind fails with it', async (t) => {
+  t.plan(4)
+
+  const held = dgram.createSocket()
+
+  held.bind(0, '127.0.0.1')
+
+  await waitForListening(held)
+
+  const socket = dgram.createSocket()
+
+  socket.on('error', (err) => t.is(err.code, 'EADDRINUSE', 'the bind error is reported'))
+
+  // The bind fails before it returns, but the socket must not quietly bind
+  // itself somewhere else to carry the send. Node reports the bind failure and
+  // leaves the socket unbound, so the send has to fail with it.
+  socket.bind(held.address().port, '127.0.0.1')
+
+  socket.send('x', 9999, '127.0.0.1', (err) => t.is(err.code, 'EADDRINUSE', 'so does the send'))
+
+  await new Promise((resolve) => setTimeout(resolve, 50))
+
+  t.absent(socket.bound, 'the socket is not bound')
+  t.is(socket.address(), null, 'and has no address of its own')
+
+  socket.close()
   held.close()
 })
 
@@ -877,6 +989,61 @@ test('socket, send a typed array', async (t) => {
   client.send(new Uint8Array([1, 2, 3]), port, '127.0.0.1')
 })
 
+test('socket, send a multi-byte typed array', async (t) => {
+  t.plan(2)
+
+  const { server, client, port } = await pair(t)
+
+  // The view is measured in bytes, not elements, both on the wire and in the
+  // byte count handed to the callback.
+  const view = new Uint16Array([1, 2, 3, 4])
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [1, 0, 2, 0, 3, 0, 4, 0])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(view, port, '127.0.0.1', (err, bytes) => t.is(bytes, view.byteLength))
+})
+
+test('socket, send a data view', async (t) => {
+  t.plan(1)
+
+  const { server, client, port } = await pair(t)
+
+  const view = new DataView(Uint8Array.from([1, 2, 3, 4]).buffer, 1, 2)
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [2, 3])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(view, port, '127.0.0.1')
+})
+
+test('socket, send a list of multi-byte views', async (t) => {
+  t.plan(1)
+
+  const { server, client, port } = await pair(t)
+
+  server.on('message', (msg) => {
+    t.alike([...msg], [1, 0, 2, 3])
+
+    server.close()
+    client.close()
+  })
+
+  client.send(
+    [new Uint16Array([1]), new DataView(Uint8Array.from([2, 3]).buffer)],
+    port,
+    '127.0.0.1'
+  )
+})
+
 test('socket, send an empty message', async (t) => {
   t.plan(2)
 
@@ -1016,8 +1183,32 @@ test('socket, send queue', async (t) => {
 
   await waitForListening(socket)
 
-  t.is(socket.getSendQueueSize(), 0)
+  t.is(socket.getSendQueueSize(), 0, 'nothing queued to begin with')
   t.is(socket.getSendQueueCount(), 0)
+
+  const payload = Buffer.alloc(60000)
+
+  let settled = 0
+
+  for (let i = 0; i < 4; i++) {
+    socket.send(payload, 9999, '127.0.0.1', () => settled++)
+  }
+
+  // The requests are handed to libuv but not completed until the loop turns, so
+  // they are all still outstanding here.
+  t.is(socket.getSendQueueCount(), 4, 'every request is queued')
+  t.is(settled, 0, 'and none have settled yet')
+
+  if (!isWindows) {
+    // Windows reports a queued size of zero for a request the kernel took
+    // immediately, so only the count is portable.
+    t.is(socket.getSendQueueSize(), 4 * payload.byteLength, 'sized by the payloads')
+  }
+
+  while (settled < 4) await new Promise((resolve) => setTimeout(resolve, 10))
+
+  t.is(socket.getSendQueueCount(), 0, 'the queue drains')
+  t.is(socket.getSendQueueSize(), 0)
 
   socket.close()
 })
@@ -1061,6 +1252,34 @@ test('socket, send error without a callback', async (t) => {
   // 'error' event is the only place it can surface. The socket is not closing,
   // which is the other half of the branch that suppresses this during teardown.
   socket.send(Buffer.alloc(70000), 1234, '127.0.0.1')
+})
+
+test('socket, send error with neither a callback nor a listener', async (t) => {
+  t.plan(1)
+
+  // A resolved address that isn't an IP address fails the send before it
+  // reaches the binding. With no callback to report to and no 'error' listener
+  // to emit to, the failure has to surface as an unhandled error rather than
+  // being dropped.
+  const lookup = (host, opts, cb) => cb(null, 'not-an-ip', 4)
+
+  const socket = dgram.createSocket({ lookup })
+
+  socket.bind(0, '127.0.0.1')
+
+  await waitForListening(socket)
+
+  await new Promise((resolve) => {
+    Bare.once('uncaughtException', (err) => {
+      t.is(err.code, 'INVALID_HOST', 'the failure was not swallowed')
+
+      socket.close()
+
+      resolve()
+    })
+
+    socket.send('x', 1234, 'host.invalid')
+  })
 })
 
 test('socket, send failing synchronously in the binding', async (t) => {
@@ -1250,6 +1469,34 @@ test('socket, multicast membership', async (t) => {
   socket.close()
 })
 
+test('socket, an omitted interface is not an empty one', async (t) => {
+  const socket = dgram.createSocket({ reuseAddr: true })
+
+  socket.bind()
+
+  await waitForListening(socket)
+
+  // Only an omitted interface means every applicable interface. An empty string
+  // is an address like any other, and not a valid one, which is how Node treats
+  // it too. The empty address accepted by bind() and connect() is the one place
+  // where empty means unspecified.
+  t.execution(() => socket.addMembership('224.0.0.118'), 'omitted')
+  t.execution(() => socket.addMembership('224.0.0.119', null), 'null')
+  t.execution(() => socket.addMembership('224.0.0.120', undefined), 'undefined')
+
+  const EINVAL = { code: 'EINVAL' }
+
+  t.exception(() => socket.addMembership('224.0.0.121', ''), EINVAL, 'empty is rejected')
+  t.exception(() => socket.dropMembership('224.0.0.121', ''), EINVAL)
+  t.exception(
+    () => socket.addSourceSpecificMembership('127.0.0.1', '232.0.0.115', ''),
+    EINVAL,
+    'and rejected for a source specific group too'
+  )
+
+  socket.close()
+})
+
 test('socket, buffer sizes', async (t) => {
   const socket = dgram.createSocket()
 
@@ -1262,6 +1509,52 @@ test('socket, buffer sizes', async (t) => {
 
   t.ok(socket.getSendBufferSize() > 0)
   t.ok(socket.getRecvBufferSize() > 0)
+
+  socket.close()
+})
+
+test('socket, options before bind', (t) => {
+  const socket = dgram.createSocket()
+
+  // The underlying socket does not exist yet, so everything that reaches it is
+  // rejected rather than failing differently per socket type.
+  t.exception(() => socket.setBroadcast(true), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setTTL(64), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastTTL(1), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastLoopback(true), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setMulticastInterface('127.0.0.1'), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.addMembership('224.0.0.114'), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.dropMembership('224.0.0.114'), /SOCKET_NOT_BOUND/)
+  t.exception(
+    () => socket.addSourceSpecificMembership('127.0.0.1', '224.0.0.114'),
+    /SOCKET_NOT_BOUND/
+  )
+  t.exception(
+    () => socket.dropSourceSpecificMembership('127.0.0.1', '224.0.0.114'),
+    /SOCKET_NOT_BOUND/
+  )
+  t.exception(() => socket.getSendBufferSize(), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setSendBufferSize(1024), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.getRecvBufferSize(), /SOCKET_NOT_BOUND/)
+  t.exception(() => socket.setRecvBufferSize(1024), /SOCKET_NOT_BOUND/)
+
+  // The send queue is tracked by the handle rather than the socket, so it reads
+  // back before the socket is bound.
+  t.is(socket.getSendQueueSize(), 0)
+  t.is(socket.getSendQueueCount(), 0)
+
+  socket.close()
+})
+
+test('socket, options are validated before the socket is bound', async (t) => {
+  const socket = dgram.createSocket()
+
+  t.exception(() => socket.setTTL('64'), /INVALID_ARGUMENT/)
+  t.exception(() => socket.addMembership(42), /INVALID_HOST/)
+
+  socket.bind(0, '127.0.0.1')
+
+  await waitForListening(socket)
 
   socket.close()
 })
@@ -1345,6 +1638,44 @@ test('socket, pause and resume', async (t) => {
       client.send('second', port, '127.0.0.1')
     }, 100)
   })
+})
+
+test('socket, pause while a bind is in flight', async (t) => {
+  t.plan(2)
+
+  // The resume is queued behind the bind, so it must not undo the pause that
+  // lands before the bind completes.
+  const server = dgram.createSocket()
+
+  let paused = true
+
+  server.on('message', (msg) => {
+    if (paused) return t.fail('received while paused')
+
+    t.is(msg.toString(), 'first', 'the buffered datagram arrives on resume')
+
+    server.close()
+    client.close()
+  })
+
+  server.bind(0, 'localhost')
+  server.resume()
+  server.pause()
+
+  await waitForListening(server)
+
+  const client = dgram.createSocket()
+  const port = server.address().port
+
+  await new Promise((resolve) => client.send('first', port, '127.0.0.1', resolve))
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  t.pass('nothing was delivered while paused')
+
+  paused = false
+
+  server.resume()
 })
 
 test('socket, ref and unref', (t) => {
@@ -1510,6 +1841,48 @@ function waitFor(emitter, event) {
       err ? reject(err) : resolve()
     }
   })
+}
+
+function linkLocalHosts() {
+  const hosts = []
+
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    for (const address of addresses) {
+      if (address.family !== 'IPv6') continue
+      if (address.address.startsWith('fe80:') === false) continue
+      if (address.scopeid === 0) continue
+
+      // Windows scopes an address by interface index, everything else by
+      // interface name, which is also how each platform reports the zone back.
+      const zone = isWindows ? address.scopeid : name
+
+      hosts.push(`${address.address}%${zone}`)
+    }
+  }
+
+  return hosts
+}
+
+// Not every interface that reports a link local address can be bound to, so try
+// each in turn rather than assuming the first one works.
+async function bindLinkLocal() {
+  for (const host of linkLocalHosts()) {
+    const socket = dgram.createSocket('udp6')
+
+    try {
+      socket.bind(0, host)
+
+      await waitForListening(socket)
+    } catch {
+      socket.close()
+
+      continue
+    }
+
+    return { socket, host }
+  }
+
+  return null
 }
 
 async function pair(t) {
