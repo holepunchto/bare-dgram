@@ -669,7 +669,10 @@ exports.Socket = class DgramSocket extends EventEmitter {
       return
     }
 
-    const message = Buffer.allocUnsafe(len)
+    // Unpooled, as a read too small to be given a buffer of its own would
+    // otherwise pin the whole pool it came from for as long as its consumer
+    // holds on to it.
+    const message = Buffer.allocUnsafeSlow(len)
     message.set(this._buffer.subarray(0, len))
 
     this.emit('message', message, {
