@@ -50,6 +50,13 @@ bare_dgram__get_address(js_env_t *env, js_value_t *value, utf8_t *str, size_t le
     return -1;
   }
 
+  if (strlen((char *) str) != written) {
+    err = js_throw_type_error(env, NULL, "Address must not contain null bytes");
+    assert(err == 0);
+
+    return -1;
+  }
+
   return 0;
 }
 
