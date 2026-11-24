@@ -805,6 +805,11 @@ function validateAddress(address, name) {
     throw errors.INVALID_HOST(`${name} must be a string, got ${typeof address}`)
   }
 
+  // The address is passed on as a C string, so a NUL would cut it short.
+  if (address.includes('\0')) {
+    throw errors.INVALID_HOST(`${name} must not contain null bytes`)
+  }
+
   validateAddressLength(address, name)
 }
 

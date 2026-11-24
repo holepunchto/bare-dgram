@@ -442,6 +442,23 @@ test('socket, over-long address on the unresolved paths', async (t) => {
   socket.close()
 })
 
+test('socket, address with a NUL on the unresolved paths', async (t) => {
+  const socket = dgram.createSocket()
+
+  socket.bind(0, '127.0.0.1')
+
+  await waitForListening(socket)
+
+  const group = '224.0.0.114\0x'
+
+  t.exception(() => socket.setMulticastInterface('127.0.0.1\0x'), /INVALID_HOST/)
+  t.exception(() => socket.addMembership(group), /INVALID_HOST/)
+  t.exception(() => socket.dropMembership(group), /INVALID_HOST/)
+  t.exception(() => socket.addSourceSpecificMembership('127.0.0.1', group), /INVALID_HOST/)
+
+  socket.close()
+})
+
 test('socket, bind with malformed lookup results', async (t) => {
   const cases = [
     ['non-string address', (h, o, cb) => cb(null, 42, 4)],
